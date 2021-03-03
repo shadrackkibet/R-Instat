@@ -17,11 +17,11 @@
 
 Imports instat.Translations
 Public Class dlgSplitText
-    Public bFirstLoad As Boolean = True
+    Private bFirstLoad As Boolean = True
     Private bReset As Boolean = True
     Private clsTextComponentsFixed, clsTextComponentsMaximum As New RFunction
     Private clsBinaryColumns As New RFunction
-
+    Private lstRCodeStructure As List(Of RCodeStructure)
     Private Sub dlgSplitText_Load(sender As Object, e As EventArgs) Handles MyBase.Load
         autoTranslate(Me)
         If bFirstLoad Then
@@ -29,7 +29,7 @@ Public Class dlgSplitText
             bFirstLoad = False
         End If
         If bReset Then
-            SetDefaults()
+            SetDefaults(lstRCodeStructure)
         End If
         SetRCodeForControls(bReset)
         bReset = False
@@ -73,7 +73,7 @@ Public Class dlgSplitText
         dctPatternPairs.Add("Semicolon ;", Chr(34) & ";" & Chr(34))
         dctPatternPairs.Add("Hyphen -", Chr(34) & "-" & Chr(34))
         dctPatternPairs.Add("Underscore _", Chr(34) & "_" & Chr(34))
-        ucrInputPattern.SetItems(dctPatternPairs)
+        ucrInputPattern.SetItems(dctPatternPairs, bNewHasRParamFunctionAsString:=True)
         'ucrInputPattern.SetRDefault(Chr(34) & " " & Chr(34)) 'This is the default for clsTextComponents
         ucrInputPattern.bAllowNonConditionValues = True
 
@@ -87,36 +87,104 @@ Public Class dlgSplitText
         ucrSaveColumn.SetAssignToBooleans(bTempAssignToIsPrefix:=True)
     End Sub
 
-    Private Sub SetDefaults()
+    Private Sub SetDefaults(Optional lstOfRCodeStructure As List(Of RCodeStructure) = Nothing)
         clsTextComponentsFixed = New RFunction
         clsTextComponentsMaximum = New RFunction
         clsBinaryColumns = New RFunction
 
         ucrSelectorSplitTextColumn.Reset()
 
+        'Setting of Package name and R commands for Rfunction happens before  we can check if any of these
+        'Rfunction matches the one from the Script
         clsBinaryColumns.SetPackageName("questionr")
         clsBinaryColumns.SetRCommand("multi.split")
 
         clsTextComponentsFixed.SetPackageName("stringr")
         clsTextComponentsFixed.SetRCommand("str_split_fixed")
-        clsTextComponentsFixed.AddParameter("pattern", Chr(34) & "," & Chr(34), iPosition:=1)
-        clsTextComponentsFixed.AddParameter("n", strParameterValue:=2, iPosition:=2)
 
         clsTextComponentsMaximum.SetPackageName("stringr")
         clsTextComponentsMaximum.SetRCommand("str_split")
-        clsTextComponentsMaximum.AddParameter("pattern", Chr(34) & "," & Chr(34), iPosition:=1)
-        clsTextComponentsMaximum.AddParameter("n", "Inf", iPosition:=2)
-        clsTextComponentsMaximum.AddParameter("simplify", "TRUE", iPosition:=3)
+
+        If IsNothing(lstRCodeStructure) Then
+            'Continue with the updating Rfunction of Default value as normal
+            AddClsTextComponentsFixedDefaultParameters()
+
+            AddClsTextComponentsMaximumDefaultParameters()
+
+            ucrBase.clsRsyntax.SetBaseRFunction(clsTextComponentsFixed)
+            'This dialogue only requires one line of code to load hence this next elseIf statement
+        ElseIf (lstRCodeStructure.Count = 1) Then
+            If Not IsNothing(TryCast(lstOfRCodeStructure(0), RFunction)) Then
+                'bMatchTwoRfunction Determines if the ListofRcodeStructure from the 
+                'script matches more than one RFunction
+                Dim bMatchTwoRfunction As Boolean = False
+                Dim strRcommand = TryCast(lstOfRCodeStructure(0), RFunction).strRCommand
+
+                For Each Rfunction In {clsTextComponentsFixed, clsTextComponentsMaximum, clsBinaryColumns}
+                    If strRcommand = Rfunction.strRCommand Then
+                        If bMatchTwoRfunction Then
+                            MsgBox("Developer error:More Than one Rfunctions match the Rfunction from the script")
+                            Exit For
+                            'TODO continue the normal loading of the dialogue if there
+                            'are more than one function matching the  Script
+                        Else
+                            If Rfunction Is clsTextComponentsFixed Then
+                                clsTextComponentsFixed = lstOfRCodeStructure(0)
+
+                                AddClsTextComponentsMaximumDefaultParameters()
+
+                                ucrBase.clsRsyntax.SetBaseRFunction(clsTextComponentsFixed)
+                                bMatchTwoRfunction = True
+                            ElseIf Rfunction Is clsBinaryColumns Then
+                                clsBinaryColumns = lstOfRCodeStructure(0)
+
+                                AddClsTextComponentsFixedDefaultParameters()
+
+                                AddClsTextComponentsMaximumDefaultParameters()
+
+                                ucrBase.clsRsyntax.SetBaseRFunction(clsBinaryColumns)
+                                bMatchTwoRfunction = True
+                            ElseIf Rfunction Is clsTextComponentsMaximum Then
+                                clsTextComponentsMaximum = lstOfRCodeStructure(0)
+
+                                AddClsTextComponentsFixedDefaultParameters()
+
+                                ucrBase.clsRsyntax.SetBaseRFunction(clsBinaryColumns)
+                                bMatchTwoRfunction = True
+                            End If
+                        End If
+                    End If
+                Next
+            Else
+                MsgBox("Developer error:The Script must be an RFunction")
+            End If
+            'This returns the list of Rcode from the script to nothing to prevent begguing when reseting
+            lstRCodeStructure = Nothing
+        Else
+            lstRCodeStructure = Nothing
+            'When the lstOfRcodeStructure has more than one Rfunction
+            MsgBox("Developer error: List of RCodeStructure must have only one RFunction")
+        End If
+
+
 
         clsTextComponentsFixed.SetAssignTo(strTemp:="split", strTempDataframe:=ucrSelectorSplitTextColumn.ucrAvailableDataFrames.cboAvailableDataFrames.Text, strTempColumn:="split", bAssignToIsPrefix:=True)
         clsTextComponentsMaximum.SetAssignTo("split", strTempDataframe:=ucrSelectorSplitTextColumn.ucrAvailableDataFrames.cboAvailableDataFrames.Text, strTempColumn:="split", bAssignToIsPrefix:=True)
         clsBinaryColumns.SetAssignTo("split", strTempDataframe:=ucrSelectorSplitTextColumn.ucrAvailableDataFrames.cboAvailableDataFrames.Text, bAssignToColumnWithoutNames:=True)
-        ucrBase.clsRsyntax.SetBaseRFunction(clsTextComponentsFixed)
+    End Sub
+
+    Private Sub AddClsTextComponentsMaximumDefaultParameters()
+        clsTextComponentsMaximum.AddParameter("pattern", Chr(34) & "," & Chr(34), iPosition:=1)
+        clsTextComponentsMaximum.AddParameter("n", "Inf", iPosition:=2)
+        clsTextComponentsMaximum.AddParameter("simplify", "TRUE", iPosition:=3)
+    End Sub
+
+    Private Sub AddClsTextComponentsFixedDefaultParameters()
+        clsTextComponentsFixed.AddParameter("pattern", Chr(34) & "," & Chr(34), iPosition:=1)
+        clsTextComponentsFixed.AddParameter("n", strParameterValue:=2, iPosition:=2)
     End Sub
 
     Private Sub SetRCodeForControls(bReset As Boolean)
-        ucrReceiverSplitTextColumn.AddAdditionalCodeParameterPair(clsTextComponentsMaximum, New RParameter("string", 0), iAdditionalPairNo:=1)
-        ucrReceiverSplitTextColumn.AddAdditionalCodeParameterPair(clsBinaryColumns, New RParameter("var", 0), iAdditionalPairNo:=2)
         ucrInputPattern.AddAdditionalCodeParameterPair(clsTextComponentsMaximum, New RParameter("pattern", 1), iAdditionalPairNo:=1)
         ucrInputPattern.AddAdditionalCodeParameterPair(clsBinaryColumns, New RParameter("split.char", 1), iAdditionalPairNo:=2)
         ucrReceiverSplitTextColumn.SetRCode(clsTextComponentsFixed, bReset)
@@ -125,6 +193,8 @@ Public Class dlgSplitText
         ucrPnlSplitText.SetRCode(ucrBase.clsRsyntax.clsBaseFunction, bReset)
         ucrPnlTextComponents.SetRCode(ucrBase.clsRsyntax.clsBaseFunction, bReset)
         ucrSaveColumn.SetRCode(clsTextComponentsFixed, bReset)
+        ucrReceiverSplitTextColumn.AddAdditionalCodeParameterPair(clsTextComponentsMaximum, New RParameter("string", 0), iAdditionalPairNo:=1)
+        ucrReceiverSplitTextColumn.AddAdditionalCodeParameterPair(clsBinaryColumns, New RParameter("var", 0), iAdditionalPairNo:=2)
     End Sub
 
     Private Sub TestOKEnabled()
@@ -162,5 +232,10 @@ Public Class dlgSplitText
     End Sub
     Private Sub Controls_ControlContentsChanged(ucrChangedControl As ucrCore) Handles ucrInputPattern.ControlContentsChanged, ucrReceiverSplitTextColumn.ControlContentsChanged, ucrNudPieces.ControlContentsChanged, ucrSaveColumn.ControlContentsChanged, ucrPnlSplitText.ControlContentsChanged
         TestOKEnabled()
+    End Sub
+
+    Public Sub OpenFromScript(lstNewRcodeStructure As List(Of RCodeStructure))
+        bReset = True
+        lstRCodeStructure = lstNewRcodeStructure
     End Sub
 End Class
