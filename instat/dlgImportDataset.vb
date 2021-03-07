@@ -453,6 +453,7 @@ Public Class dlgImportDataset
                     SetControlsFromFile("")
                 Else
                     dctSelectedExcelSheets.Clear()
+                    clbSheets.Items.Clear()
                     SetControlsFromFile(dlgOpen.FileName)
                 End If
             Else
@@ -636,10 +637,20 @@ Public Class dlgImportDataset
             strFileType = ""
         End If
         If strFileType <> "" AndAlso strFileType <> "RDS" Then
-            'ucrSaveFile.Show()
-            'ucrSaveFile.SetName(frmMain.clsRLink.MakeValidText(strFileName), bSilent:=True)
-            'don't ovewrite the name for excel sheets if there is a selected sheet name
-            If (strFileType <> "XLSX" OrElse strFileType <> "XLS") AndAlso clbSheets.CheckedItems.Count = 0 Then
+            If (strFileType = "XLSX" OrElse strFileType = "XLS") Then
+                ucrSaveFile.SetAssignToBooleans(bTempDataFrameList:=True)
+                Select Case clbSheets.CheckedItems.Count
+                    Case Is > 1
+                        ucrSaveFile.Hide()
+                    Case 1
+                        ucrSaveFile.Show()
+                        ucrSaveFile.SetName(dctSelectedExcelSheets.Values.First(), bSilent:=True)
+                    Case 0
+                        ucrSaveFile.Show()
+                        ucrSaveFile.SetName(frmMain.clsRLink.MakeValidText(strFileName), bSilent:=True)
+                End Select
+            Else
+                ucrSaveFile.SetAssignToBooleans(bTempDataFrameList:=False)
                 ucrSaveFile.Show()
                 ucrSaveFile.SetName(frmMain.clsRLink.MakeValidText(strFileName), bSilent:=True)
             End If
